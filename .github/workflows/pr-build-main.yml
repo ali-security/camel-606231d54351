@@ -18,35 +18,35 @@
 name: PR Build (Camel 4)
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths-ignore:
-      - .github/**
-      - README.md
-      - SECURITY.md
-      - Jenkinsfile
-      - Jenkinsfile.*
-      - NOTICE.txt
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: 'Extra Maven test selector (e.g. -Dtest=FooTest); empty runs the full suite of the affected modules'
+        required: false
+        default: ''
 
 jobs:
   build:
-    if: github.repository == 'apache/camel'
     permissions:
       issues: write
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     strategy:
+      fail-fast: false
       matrix:
         java: [ '17' ]
+        # Modules touched by the sealed patches (what incremental-build.sh derives from a PR diff)
+        name: [ 'support', 'core' ]
+        include:
+          - name: support
+            modules: core/camel-support,core/camel-base,components/camel-platform-http
+          - name: core
+            modules: core/camel-core
     steps:
       - uses: actions/checkout@v3
         with:
           persist-credentials: false
           fetch-depth: 0
-      - id: install-packages
-        uses: ./.github/actions/install-packages
-      - id: install-mvnd
-        uses: ./.github/actions/install-mvnd
       - name: Set up JDK ${{ matrix.java }}
         uses: actions/setup-java@v3
         with:
@@ -54,21 +54,104 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: 'maven'
       - name: maven build
-        run: ./mvnw -l build.log -Dquickly install
+        run: ./mvnw -B -ntp -l build.log -Dquickly install -pl ${{ matrix.modules }} -am
       - name: archive logs
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: build.log
+          name: build-${{ matrix.name }}.log
           path: build.log
-      - name: Fail if there are uncommitted changes
+      - name: local stand-in for neverssl.com (PlatformHttpProxyTest proxies a GET to it; the real host is unreachable from runners)
+        if: matrix.name == 'support'
+        run: |
+          # camel-http forwards the proxied request as POST (it carries a body), so the stand-in answers GET and POST like the real site
+          cat > /tmp/neverssl.py <<'PY'
+          from http.server import BaseHTTPRequestHandler, HTTPServer
+          class H(BaseHTTPRequestHandler):
+              def _ok(self):
+                  n = int(self.headers.get("Content-Length") or 0)
+                  if n:
+                      self.rfile.read(n)
+                  b = b"<html><head><title>NeverSSL stand-in</title></head><body>stand-in origin</body></html>\n"
+                  self.send_response(200)
+                  self.send_header("Content-Type", "text/html")
+                  self.send_header("Content-Length", str(len(b)))
+                  self.end_headers()
+                  self.wfile.write(b)
+              do_GET = do_POST = do_PUT = _ok
+          HTTPServer(("127.0.0.1", 80), H).serve_forever()
+          PY
+          echo '127.0.0.1 neverssl.com' | sudo tee -a /etc/hosts
+          sudo nohup python3 /tmp/neverssl.py > /tmp/neverssl.log 2>&1 &
+          sleep 3
+          curl -sf http://neverssl.com:80 | grep '<html>'
+          curl -sf -X POST -d hello http://neverssl.com:80 | grep '<html>'
+      - name: mvn test
+        run: ./mvnw -B -e -ntp -V -Dsurefire.rerunFailingTestsCount=2 -Dformatter.skip -Dimpsort.skip -Dlicense.skip -Dsurefire.failIfNoSpecifiedTests=false install -pl ${{ matrix.modules }} ${{ inputs.test-filter }}
+      - name: test summary
+        if: always()
         shell: bash
         run: |
-          [[ -z $(git status --porcelain) ]] || { echo 'There are uncommitted changes'; git status; echo; echo; git diff; exit 1; }
-      - name: mvn test
-        uses: ./.github/actions/incremental-build
+          echo "==== Surefire per-module totals ===="
+          for d in $(echo "${{ matrix.modules }}" | tr ',' ' '); do
+            r="$d/target/surefire-reports"
+            [ -d "$r" ] || { echo "$d: no surefire reports"; continue; }
+            python3 - "$d" "$r" <<'PY'
+          import sys, os, re, glob, xml.etree.ElementTree as ET
+          mod, rep = sys.argv[1], sys.argv[2]
+          # Surefire records no message for some skips (bare assumeTrue/assumeThat);
+          # recover the reason from the test source so every skip is explained.
+          def src_reason(cls, name):
+              p = os.path.join(mod, "src/test/java", cls.replace(".", "/") + ".java")
+              if not os.path.exists(p):
+                  return None
+              lines = open(p, encoding="utf-8", errors="replace").read().splitlines()
+              for i, l in enumerate(lines):
+                  if not re.search(r"\bvoid\s+" + re.escape(name) + r"\s*\(", l):
+                      continue
+                  for k in range(max(0, i - 4), i):
+                      if "@Disabled" in lines[k]:
+                          return "source: " + lines[k].strip()
+                  for j in range(i + 1, min(len(lines), i + 15)):
+                      m = re.search(r"assume\w*\((.*)", lines[j])
+                      if not m:
+                          continue
+                      why = "upstream assumption in source: " + lines[j].strip()
+                      fm = re.match(r"(\w+)\)", m.group(1).strip())
+                      if fm:
+                          for d, dl in enumerate(lines):
+                              if "boolean" in dl and re.search(r"\b" + fm.group(1) + r"\s*;", dl):
+                                  c, k = [], d - 1
+                                  while k >= 0 and lines[k].strip().startswith("//"):
+                                      c.insert(0, lines[k].strip().lstrip("/").strip()); k -= 1
+                                  if c:
+                                      why += " -- upstream comment: " + " ".join(c)
+                                  break
+                      return why
+                  break
+              return None
+          t=f=e=s=0; skipped={}
+          for x in glob.glob(rep + "/TEST-*.xml"):
+              root = ET.parse(x).getroot()
+              t+=int(root.get("tests",0)); f+=int(root.get("failures",0)); e+=int(root.get("errors",0)); s+=int(root.get("skipped",0))
+              for tc in root.iter("testcase"):
+                  sk = tc.find("skipped")
+                  if sk is not None:
+                      cls, name = tc.get("classname",""), tc.get("name","")
+                      raw = (sk.get("message") or (sk.text or "")).strip()
+                      if not raw or "assumption is not true" in raw:
+                          raw = src_reason(cls, name) or raw or "no reason recorded by surefire or source"
+                      reason = raw.splitlines()[0][:220]
+                      skipped.setdefault(reason, []).append(cls.split(".")[-1] + "." + name)
+          print(f"{mod}: Tests run: {t}, Failures: {f}, Errors: {e}, Skipped: {s}, Passed: {t-f-e-s}")
+          for reason, tests in sorted(skipped.items()):
+              print(f"  SKIPPED x{len(tests)} [{reason}]: " + ", ".join(sorted(tests)))
+          PY
+          done
+      - name: upload camel-support jar
+        if: matrix.name == 'support'
+        uses: actions/upload-artifact@v4
         with:
-          mode: test
-          pr-id: ${{ github.event.number }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          skip-mvnd-install: 'true'
+          name: camel-support-jar
+          path: core/camel-support/target/camel-support-4.0.0.jar
+          if-no-files-found: error

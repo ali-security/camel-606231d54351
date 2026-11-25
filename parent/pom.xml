@@ -40,6 +40,7 @@
         <camel.surefire.forkTimeout>600</camel.surefire.forkTimeout>
         <camel.surefire.reuseForks>true</camel.surefire.reuseForks>
         <camel.surefire.parallel>false</camel.surefire.parallel>
+        <surefire.rerunFailingTestsCount>0</surefire.rerunFailingTestsCount>
         <camel.surefire.parallel.factor>1</camel.surefire.parallel.factor>
         <camel.surefire.parallel.strategy>dynamic</camel.surefire.parallel.strategy>
         <camel.failsafe.forkTimeout>600</camel.failsafe.forkTimeout>
@@ -3402,7 +3403,7 @@
                             <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
                             <runOrder>alphabetical</runOrder>
                             <!-- lets re-run the failed test one more time, just to be sure -->
-                            <rerunFailingTestsCount>0</rerunFailingTestsCount>
+                            <rerunFailingTestsCount>${surefire.rerunFailingTestsCount}</rerunFailingTestsCount>
                             <systemPropertyVariables>
                                 <javax.xml.accessExternalSchema>file,http,https</javax.xml.accessExternalSchema>
                                 <javax.xml.accessExternalDTD>file,http</javax.xml.accessExternalDTD>

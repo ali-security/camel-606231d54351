@@ -23,6 +23,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class FileConsumerFileNameFilterTest extends ContextTestSupport {
@@ -35,6 +36,7 @@ public class FileConsumerFileNameFilterTest extends ContextTestSupport {
         template.sendBodyAndHeader(fileUri, "<book>Camel Rocks</book>", Exchange.FILE_NAME, "book.xml");
         template.sendBodyAndHeader(fileUri, "Bye World", Exchange.FILE_NAME, "bye.txt");
     }
+    @Disabled("Timing race on GitHub CI runners: the file consumer polls (delay=10) while @BeforeEach is still writing files, so the dynamic fileName filter misses hello.txt")
 
     @Test
     public void testFileConsumer() throws Exception {

@@ -18,16 +18,7 @@
 name: Reformat and Build (Camel 3.x)
 
 on:
-  push:
-    branches:
-      - camel-3.x
-    paths-ignore:
-      - .github/**/*
-      - README.md
-      - SECURITY.md
-      - Jenkinsfile
-      - Jenkinsfile.*
-      - NOTICE.txt
+  workflow_dispatch:
 
 permissions: {}
 jobs:

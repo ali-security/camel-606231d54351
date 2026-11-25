@@ -18,18 +18,7 @@
 name: Component Check
 
 on:
-  pull_request_target:
-    types:
-      - opened
-      - reopened
-    paths:
-      - 'parent/**'
-      - 'core/**'
-      - 'components/**'
-  workflow_run:
-    workflows: [ "PR Build (Camel 3.x)" ]
-    types:
-      - completed
+  workflow_dispatch:
 
 permissions: {}
 jobs:

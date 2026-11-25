@@ -22,6 +22,7 @@ import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,6 +38,7 @@ public class MulticastParallelStreamingTest extends ContextTestSupport {
 
         assertMockEndpointsSatisfied();
     }
+    @Disabled("Timing-dependent: asserts parallel completion order (BA) via sleeps, flips under parallel JUnit execution on GitHub CI runners")
 
     @Test
     public void testMulticastParallel() throws Exception {

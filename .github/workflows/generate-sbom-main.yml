@@ -18,9 +18,6 @@
 name: Generate SBOM (Camel 4)
 
 on:
-  schedule:
-    # Every 24 hours
-  - cron: '30 14 * * 0'
   workflow_dispatch:
 
 permissions: {}

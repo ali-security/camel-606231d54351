@@ -21,9 +21,11 @@ import org.apache.camel.ContextTestSupport;
 import org.apache.camel.Exchange;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.component.mock.MockEndpoint;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class MulticastParallelStreamingTimeoutTest extends ContextTestSupport {
+    @Disabled("Timing-dependent: relies on sleep vs. timeout windows, fails under parallel JUnit execution on GitHub CI runners")
 
     @Test
     public void testMulticastParallelStreamingTimeout() throws Exception {

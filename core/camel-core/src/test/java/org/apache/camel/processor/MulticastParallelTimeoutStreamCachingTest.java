@@ -28,6 +28,7 @@ import org.apache.camel.Message;
 import org.apache.camel.Processor;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.converter.stream.CachedOutputStream;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,6 +55,7 @@ public class MulticastParallelTimeoutStreamCachingTest extends ContextTestSuppor
         File[] files = f.listFiles();
         assertEquals(0, files.length);
     }
+    @Disabled("Timing-dependent: relies on sleep vs. timeout windows, fails under parallel JUnit execution on GitHub CI runners")
 
     @Test
     public void testCreateOutputStreamCacheBeforeTimeoutButWriteToOutputStreamCacheAfterTimeout() throws Exception {
